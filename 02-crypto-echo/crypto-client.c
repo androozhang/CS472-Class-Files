@@ -173,6 +173,21 @@
 #include "crypto-lib.h"
 #include "protocol.h"
 
+int server_sockfd = -1;
+int client_sockfd = -1;
+volatile int client_exit_requested = 0;
+
+void client_signal_handler(int sig) {
+    printf("\nReceived signal %d, exiting client...\n", sig);
+    client_exit_requested = 1;
+    
+    if (client_sockfd != -1) {
+        close(client_sockfd);
+        client_sockfd = -1;
+    }
+    
+    exit(0);
+}
 
 /* =============================================================================
  * STUDENT TODO: IMPLEMENT THIS FUNCTION
@@ -193,6 +208,103 @@ void start_client(const char* addr, int port) {
     printf("  - Connect to %s:%d\n", addr, port);
     printf("  - Implement communication loop\n");
     printf("  - Close socket when done\n");
+    int sockfd;
+    struct sockaddr_in server_addr;
+    char input_buffer[BUFFER_SIZE];
+    char extracted_msg[BUFFER_SIZE];
+    ssize_t pdu_len;
+    
+    // Set up client-specific signal handler for Ctrl+C
+    signal(SIGINT, client_signal_handler);
+    
+    // Create TCP socket
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        perror("Error creating socket");
+        exit(EXIT_FAILURE);
+    }
+    
+    client_sockfd = sockfd; // For signal handler
+    
+    // Configure server address
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+    
+    if (inet_pton(AF_INET, addr, &server_addr.sin_addr) <= 0) {
+        fprintf(stderr, "Error: Invalid address %s\n", addr);
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+    
+    // Connect to server
+    if (connect(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Error connecting to server");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+    
+    printf("Connected to server %s:%d\n", addr, port);
+    printf("Type messages to send to server.\n");
+    printf("Type 'exit' to quit, or 'exit server' to shutdown the server.\n");
+    printf("Press Ctrl+C to exit at any time.\n\n");
+    
+    // Client interaction loop
+    while (!client_exit_requested) {
+        printf("> ");
+        fflush(stdout);
+        
+        // Get input from user
+        if (fgets(input_buffer, sizeof(input_buffer), stdin) == NULL) {
+            if (client_exit_requested) {
+                printf("\nExiting due to signal...\n");
+            } else {
+                printf("\nEOF detected, closing connection.\n");
+            }
+            break;
+        }
+        
+        // Remove trailing newline
+        size_t len = strlen(input_buffer);
+        if (len > 0 && input_buffer[len-1] == '\n') {
+            input_buffer[len-1] = '\0';
+            len--;
+        }
+        
+        // Check for exit command
+        if (strcmp(input_buffer, "exit") == 0) {
+            printf("Exiting...\n");
+            break;
+        }
+        
+        // Send message PDU to server
+        if (send_pdu(sockfd, input_buffer) < 0) {
+            printf("Error sending message. Server may have disconnected.\n");
+            break;
+        }
+        
+        // Receive response PDU from server
+        pdu_len = recv_pdu(sockfd, extracted_msg, sizeof(extracted_msg));
+        if (pdu_len < 0) {
+            printf("Error receiving response. Server may have disconnected.\n");
+            break;
+        } else if (pdu_len == 0) {
+            printf("Server closed connection.\n");
+            break;
+        }
+        
+        printf("Server: %s\n", extracted_msg);
+        
+        // Check if server is exiting (response to "exit server" command)
+        if (strstr(extracted_msg, "server is exiting") != NULL) {
+            printf("Server is shutting down.\n");
+            break;
+        }
+    }
+    
+    close(sockfd);
+    client_sockfd = -1;
+    printf("Client disconnected.\n");
 }
 
 

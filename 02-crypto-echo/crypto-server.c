@@ -225,6 +225,7 @@
 #include <stdint.h>
 #include "crypto-server.h"
 #include "crypto-lib.h"
+#include "crypto-echo.h"
 #include "protocol.h"
 
 
@@ -245,6 +246,106 @@
  * 
  * NOTE: If addr is "0.0.0.0", use INADDR_ANY instead of inet_pton()
  */
+int server_sockfd = -1;
+int client_sockfd = -1;
+char send_buffer[BUFFER_SIZE];
+char recv_buffer[BUFFER_SIZE];
+
+ssize_t send_all(int sockfd, const char* buffer, size_t length) {
+    size_t bytes_sent = 0;
+    ssize_t result;
+    
+    while (bytes_sent < length) {
+        result = send(sockfd, buffer + bytes_sent, length - bytes_sent, 0);
+        if (result < 0) {
+            return -1;
+        }
+        bytes_sent += result;
+    }
+    
+    return bytes_sent;
+}
+
+ssize_t send_pdu(int sockfd, const char *message) {
+    int pdu_len = netmsg_from_cstr(message, (uint8_t*)send_buffer, BUFFER_SIZE);
+    if (pdu_len < 0) {
+        fprintf(stderr, "Error: Message too long for buffer\n");
+        return -1;
+    }
+    
+    return send_all(sockfd, send_buffer, pdu_len);
+}
+
+ssize_t recv_pdu(int sockfd, char *message, size_t max_length) {
+    // First, receive the length field (2 bytes)
+    uint16_t net_msg_len;
+    size_t bytes_received = 0;
+    ssize_t result;
+    
+    // Receive length field
+    while (bytes_received < sizeof(net_msg_len)) {
+        result = recv(sockfd, ((char*)&net_msg_len) + bytes_received, 
+                     sizeof(net_msg_len) - bytes_received, 0);
+        if (result <= 0) {
+            return result; // Error or connection closed
+        }
+        bytes_received += result;
+    }
+    
+    // Convert length from network byte order
+    uint16_t msg_len = ntohs(net_msg_len);
+    
+    // Validate message length
+    if (msg_len > MAX_MSG_DATA_SIZE) {
+        fprintf(stderr, "Error: Message length %u exceeds maximum %zu\n", 
+                msg_len, (size_t)MAX_MSG_DATA_SIZE);
+        return -1;
+    }
+    
+    // Receive the message data
+    bytes_received = 0;
+    while (bytes_received < msg_len) {
+        result = recv(sockfd, recv_buffer + bytes_received, 
+                     msg_len - bytes_received, 0);
+        if (result <= 0) {
+            return result; // Error or connection closed
+        }
+        bytes_received += result;
+    }
+    
+    // Extract message and null-terminate
+    size_t copy_len = (msg_len < max_length - 1) ? msg_len : max_length - 1;
+    memcpy(message, recv_buffer, copy_len);
+    message[copy_len] = '\0';
+    
+    return copy_len;
+}
+
+int netmsg_from_cstr(const char *msg_str, uint8_t *msg_buff, uint16_t msg_buff_sz) {
+    if (!msg_str || !msg_buff || msg_buff_sz < sizeof(uint16_t)) {
+        return -1;
+    }
+    
+    uint16_t msg_len = strlen(msg_str);
+    uint16_t total_len = sizeof(uint16_t) + msg_len;
+    
+    // Check if message fits in buffer
+    if (total_len > msg_buff_sz) {
+        return -1;
+    }
+    
+    // Create PDU structure overlay
+    echo_pdu_t *pdu = (echo_pdu_t *)msg_buff;
+    
+    // Set length in network byte order
+    pdu->msg_len = htons(msg_len);
+    
+    // Copy message data
+    memcpy(pdu->msg_data, msg_str, msg_len);
+    
+    return total_len;
+}
+
 void start_server(const char* addr, int port) {
     printf("Student TODO: Implement start_server()\n");
     printf("  - Create TCP socket\n");
@@ -252,4 +353,132 @@ void start_server(const char* addr, int port) {
     printf("  - Listen for connections (BACKLOG = %d)\n", BACKLOG);
     printf("  - Accept and handle clients in a loop\n");
     printf("  - Close socket on shutdown\n");
+    int sockfd, client_sock;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t client_addr_len = sizeof(client_addr);
+    char client_ip[INET_ADDRSTRLEN];
+    char extracted_msg[BUFFER_SIZE];
+    char response_msg[BUFFER_SIZE];
+    ssize_t pdu_len;
+    int reuse = 1;
+    int server_should_exit = 0;
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        perror("Error creating socket");
+        exit(EXIT_FAILURE);
+    }
+    
+    server_sockfd = sockfd; // For signal handler
+    
+    // Set socket options to reuse address
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
+        perror("Error setting socket options");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+    
+    if (strcmp(addr, "0.0.0.0") == 0) {
+        server_addr.sin_addr.s_addr = INADDR_ANY;
+    } else {
+        if (inet_pton(AF_INET, addr, &server_addr.sin_addr) <= 0) {
+            fprintf(stderr, "Error: Invalid address %s\n", addr);
+            close(sockfd);
+            exit(EXIT_FAILURE);
+        }
+    }
+    
+    // Bind socket to address
+    if (bind(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Error binding socket");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+    
+    // Listen for connections
+    if (listen(sockfd, BACKLOG) < 0) {
+        perror("Error listening on socket");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+
+    while (!server_should_exit) {
+        printf("Waiting for client connection...\n");
+        
+        // Accept client connection
+        client_sock = accept(sockfd, (struct sockaddr*)&client_addr, &client_addr_len);
+        if (client_sock < 0) {
+            perror("Error accepting connection");
+            continue; // Try to accept next connection
+        }
+        
+        client_sockfd = client_sock; // For signal handler
+        
+        // Get client IP address for logging
+        inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
+        printf("Client connected from %s:%d\n", client_ip, ntohs(client_addr.sin_port));
+        printf("Server ready to process messages from this client...\n");
+        
+        // Client communication loop
+        while (1) {
+            // Receive PDU from client
+            pdu_len = recv_pdu(client_sock, extracted_msg, sizeof(extracted_msg));
+            
+            if (pdu_len < 0) {
+                printf("Error receiving message from client.\n");
+                break; // Close this client, wait for next one
+            } else if (pdu_len == 0) {
+                printf("Client disconnected gracefully.\n");
+                break; // Close this client, wait for next one
+            }
+            
+            printf("Received from client: \"%s\"\n", extracted_msg);
+            
+            // Check for exit server command
+            if (strcmp(extracted_msg, "exit server") == 0) {
+                printf("Client requested server shutdown.\n");
+                
+                // Send shutdown response
+                strcpy(response_msg, "echo: exit server - The server is exiting");
+                if (send_pdu(client_sock, response_msg) < 0) {
+                    perror("Error sending shutdown response");
+                } else {
+                    printf("Sent shutdown message to client: \"%s\"\n", response_msg);
+                }
+                
+                server_should_exit = 1; // Signal to exit main server loop
+                break; // Break out of client loop
+            }
+            
+            // Create echo response: "echo: original_message"
+            snprintf(response_msg, sizeof(response_msg), "echo: %.500s", extracted_msg);
+            
+            // Send response PDU back to client
+            if (send_pdu(client_sock, response_msg) < 0) {
+                printf("Error sending response to client. Client may have disconnected.\n");
+                break; // Close this client, wait for next one
+            }
+            
+            printf("Sent to client: \"%s\"\n", response_msg);
+            printf("---\n");
+        }
+        
+        // Close current client connection
+        close(client_sock);
+        client_sockfd = -1;
+        printf("Client connection closed.\n");
+        
+        if (!server_should_exit) {
+            printf("Ready for next client connection.\n\n");
+        }
+    }
+    
+    // Clean up server socket
+    close(sockfd);
+    server_sockfd = -1;
+    printf("Server shutdown complete.\n");
 }
