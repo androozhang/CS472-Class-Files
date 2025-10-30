@@ -93,9 +93,6 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
-
-
-
 void signal_handler(int sig) {
     printf("\nReceived signal %d, shutting down gracefully...\n", sig);
     

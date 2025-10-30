@@ -2,16 +2,16 @@
  * =============================================================================
  * STUDENT ASSIGNMENT: CRYPTO-SERVER.C
  * =============================================================================
- * 
+ *
  * ASSIGNMENT OBJECTIVE:
  * Implement a TCP server that accepts client connections and processes
  * encrypted/plaintext messages. Your focus is on socket programming, connection
  * handling, and the server-side protocol implementation.
- * 
+ *
  * =============================================================================
  * WHAT YOU NEED TO IMPLEMENT:
  * =============================================================================
- * 
+ *
  * 1. SERVER SOCKET SETUP (start_server function):
  *    - Create a TCP socket using socket()
  *    - Set SO_REUSEADDR socket option (helpful during development)
@@ -20,7 +20,7 @@
  *    - Start listening with listen()
  *    - Call your server loop function
  *    - Close socket on shutdown
- * 
+ *
  * 2. SERVER MAIN LOOP:
  *    - Create a function that handles multiple clients sequentially
  *    - Loop to:
@@ -29,7 +29,7 @@
  *      c) Call your client service function
  *      d) Close the client socket when done
  *      e) Return to accept next client (or exit if shutdown requested)
- * 
+ *
  * 3. CLIENT SERVICE LOOP:
  *    - Create a function that handles communication with ONE client
  *    - Allocate buffers for sending and receiving
@@ -43,7 +43,7 @@
  *      f) Send response using send()
  *      g) Return appropriate status code when client exits
  *    - Free buffers before returning
- * 
+ *
  * 4. RESPONSE BUILDING:
  *    - Consider creating a helper function to build response PDUs
  *    - Handle different message types:
@@ -54,13 +54,13 @@
  *      * MSG_CMD_SERVER_STOP: No response needed (server will exit)
  *    - Set proper direction (DIR_RESPONSE)
  *    - Return total PDU size
- * 
+ *
  * =============================================================================
  * ONE APPROACH TO SOLVE THIS PROBLEM:
  * =============================================================================
- * 
+ *
  * FUNCTION STRUCTURE:
- * 
+ *
  * void start_server(const char* addr, int port) {
  *     // 1. Create TCP socket
  *     // 2. Set SO_REUSEADDR option (for development)
@@ -71,7 +71,7 @@
  *     // 6. Call your server loop function
  *     // 7. Close socket
  * }
- * 
+ *
  * int server_loop(int server_socket, const char* addr, int port) {
  *     // 1. Print "Server listening..." message
  *     // 2. Infinite loop:
@@ -86,7 +86,7 @@
  *     //    f) Close client socket
  *     // 3. Return when server shutdown requested
  * }
- * 
+ *
  * int service_client_loop(int client_socket) {
  *     // 1. Allocate send/receive buffers
  *     // 2. Initialize keys to NULL_CRYPTO_KEY
@@ -102,8 +102,8 @@
  *     //    g) Loop back
  *     // 4. Free buffers before returning
  * }
- * 
- * int build_response(crypto_msg_t *request, crypto_msg_t *response, 
+ *
+ * int build_response(crypto_msg_t *request, crypto_msg_t *response,
  *                    crypto_key_t *client_key, crypto_key_t *server_key) {
  *     // 1. Set response->header.direction = DIR_RESPONSE
  *     // 2. Set response->header.msg_type = request->header.msg_type
@@ -126,11 +126,11 @@
  *     //      - Set payload_len = 0
  *     // 4. Return sizeof(crypto_pdu_t) + payload_len
  * }
- * 
+ *
  * =============================================================================
  * IMPORTANT PROTOCOL DETAILS:
  * =============================================================================
- * 
+ *
  * SERVER RESPONSIBILITIES:
  * 1. Generate encryption keys when client requests (MSG_KEY_EXCHANGE)
  * 2. Send the CLIENT'S key to the client (not the server's key!)
@@ -138,61 +138,61 @@
  *                    client_key (to send to client)
  * 4. Echo messages back with "echo " prefix
  * 5. Handle encrypted data: decrypt -> process -> encrypt -> send
- * 
+ *
  * KEY GENERATION:
  *   crypto_key_t server_key, client_key;
  *   gen_key_pair(&server_key, &client_key);
  *   // Send client_key to the client in MSG_KEY_EXCHANGE response
  *   memcpy(response->payload, &client_key, sizeof(crypto_key_t));
- * 
+ *
  * DECRYPTING CLIENT DATA:
  *   // Client encrypted with their key, we decrypt with server_key
  *   uint8_t decrypted[MAX_SIZE];
  *   decrypt_string(server_key, decrypted, request->payload, request->header.payload_len);
  *   decrypted[request->header.payload_len] = '\0'; // Null-terminate
- * 
+ *
  * ENCRYPTING RESPONSE:
  *   // We encrypt with server_key for client to decrypt with their key
  *   uint8_t encrypted[MAX_SIZE];
  *   int encrypted_len = encrypt_string(server_key, encrypted, plaintext, plaintext_len);
  *   memcpy(response->payload, encrypted, encrypted_len);
  *   response->header.payload_len = encrypted_len;
- * 
+ *
  * RETURN CODES:
  *   RC_CLIENT_EXITED          - Client disconnected normally
  *   RC_CLIENT_REQ_SERVER_EXIT - Client requested server shutdown
  *   RC_OK                     - Success
  *   Negative values           - Errors
- * 
+ *
  * =============================================================================
  * SOCKET PROGRAMMING REMINDERS:
  * =============================================================================
- * 
+ *
  * CREATING AND BINDING:
  *   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
- *   
+ *
  *   struct sockaddr_in addr;
  *   memset(&addr, 0, sizeof(addr));
  *   addr.sin_family = AF_INET;
  *   addr.sin_port = htons(port);
  *   addr.sin_addr.s_addr = INADDR_ANY;  // or use inet_pton()
- *   
+ *
  *   bind(sockfd, (struct sockaddr*)&addr, sizeof(addr));
  *   listen(sockfd, BACKLOG);
- * 
+ *
  * ACCEPTING CONNECTIONS:
  *   struct sockaddr_in client_addr;
  *   socklen_t addr_len = sizeof(client_addr);
  *   int client_sock = accept(server_sock, (struct sockaddr*)&client_addr, &addr_len);
- * 
+ *
  * GETTING CLIENT IP:
  *   char client_ip[INET_ADDRSTRLEN];
  *   inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
- * 
+ *
  * =============================================================================
  * DEBUGGING TIPS:
  * =============================================================================
- * 
+ *
  * 1. Use print_msg_info() to display received and sent PDUs
  * 2. Print client IP when connections are accepted
  * 3. Check all socket operation return values
@@ -200,18 +200,18 @@
  * 5. Verify keys are generated correctly (print key values)
  * 6. Use telnet or netcat to test basic connectivity first
  * 7. Handle partial recv() - though for this assignment, assume full PDU arrives
- * 
+ *
  * =============================================================================
  * TESTING RECOMMENDATIONS:
  * =============================================================================
- * 
+ *
  * 1. Start simple: Accept connection and echo plain text
  * 2. Test key exchange: Client sends '#', server generates and returns key
  * 3. Test encryption: Client sends '!message', server decrypts, echoes, encrypts
  * 4. Test multiple clients: Connect, disconnect, connect again
  * 5. Test shutdown: Client sends '=', server exits gracefully
  * 6. Test error cases: Client disconnects unexpectedly
- * 
+ *
  * Good luck! Server programming requires careful state management!
  * =============================================================================
  */
@@ -228,7 +228,6 @@
 #include "crypto-echo.h"
 #include "protocol.h"
 
-
 /* =============================================================================
  * STUDENT TODO: IMPLEMENT THIS FUNCTION
  * =============================================================================
@@ -239,141 +238,268 @@
  * 4. Start listening for connections
  * 5. Call your server loop function
  * 6. Clean up when done
- * 
+ *
  * Parameters:
  *   addr - Server bind address (e.g., "0.0.0.0" for all interfaces)
  *   port - Server port number (e.g., 1234)
- * 
+ *
  * NOTE: If addr is "0.0.0.0", use INADDR_ANY instead of inet_pton()
  */
-int server_sockfd = -1;
-int client_sockfd = -1;
 char send_buffer[BUFFER_SIZE];
 char recv_buffer[BUFFER_SIZE];
+extern int server_sockfd;
+extern int client_sockfd;
 
-ssize_t send_all(int sockfd, const char* buffer, size_t length) {
+ssize_t send_all(int sockfd, const char *buffer, size_t length)
+{
     size_t bytes_sent = 0;
     ssize_t result;
-    
-    while (bytes_sent < length) {
+
+    while (bytes_sent < length)
+    {
         result = send(sockfd, buffer + bytes_sent, length - bytes_sent, 0);
-        if (result < 0) {
+        if (result < 0)
+        {
             return -1;
         }
         bytes_sent += result;
     }
-    
+
     return bytes_sent;
 }
 
-ssize_t send_pdu(int sockfd, const char *message) {
-    int pdu_len = netmsg_from_cstr(message, (uint8_t*)send_buffer, BUFFER_SIZE);
-    if (pdu_len < 0) {
+ssize_t send_pdu(int sockfd, const char *message)
+{
+    int pdu_len = netmsg_from_cstr(message, (uint8_t *)send_buffer, BUFFER_SIZE);
+    if (pdu_len < 0)
+    {
         fprintf(stderr, "Error: Message too long for buffer\n");
         return -1;
     }
-    
+
     return send_all(sockfd, send_buffer, pdu_len);
 }
 
-ssize_t recv_pdu(int sockfd, char *message, size_t max_length) {
-    // First, receive the length field (2 bytes)
-    uint16_t net_msg_len;
-    size_t bytes_received = 0;
-    ssize_t result;
-    
-    // Receive length field
-    while (bytes_received < sizeof(net_msg_len)) {
-        result = recv(sockfd, ((char*)&net_msg_len) + bytes_received, 
-                     sizeof(net_msg_len) - bytes_received, 0);
-        if (result <= 0) {
-            return result; // Error or connection closed
-        }
-        bytes_received += result;
+ssize_t recv_all(int sockfd, char *buffer, size_t length)
+{
+    size_t total = 0;
+    ssize_t n;
+    while (total < length)
+    {
+        n = recv(sockfd, buffer + total, length - total, 0);
+        if (n <= 0)
+            return n; // error or closed
+        total += n;
     }
-    
-    // Convert length from network byte order
-    uint16_t msg_len = ntohs(net_msg_len);
-    
-    // Validate message length
-    if (msg_len > MAX_MSG_DATA_SIZE) {
-        fprintf(stderr, "Error: Message length %u exceeds maximum %zu\n", 
-                msg_len, (size_t)MAX_MSG_DATA_SIZE);
-        return -1;
-    }
-    
-    // Receive the message data
-    bytes_received = 0;
-    while (bytes_received < msg_len) {
-        result = recv(sockfd, recv_buffer + bytes_received, 
-                     msg_len - bytes_received, 0);
-        if (result <= 0) {
-            return result; // Error or connection closed
-        }
-        bytes_received += result;
-    }
-    
-    // Extract message and null-terminate
-    size_t copy_len = (msg_len < max_length - 1) ? msg_len : max_length - 1;
-    memcpy(message, recv_buffer, copy_len);
-    message[copy_len] = '\0';
-    
-    return copy_len;
+    return total;
 }
 
-int netmsg_from_cstr(const char *msg_str, uint8_t *msg_buff, uint16_t msg_buff_sz) {
-    if (!msg_str || !msg_buff || msg_buff_sz < sizeof(uint16_t)) {
-        return -1;
+int build_response(crypto_msg_t *request,
+                   crypto_msg_t *response,
+                   crypto_key_t *client_key,
+                   crypto_key_t *server_key)
+{
+    uint16_t payload_len = 0;
+    response->header.direction = DIR_RESPONSE;
+    response->header.msg_type = request->header.msg_type;
+
+    switch (request->header.msg_type)
+    {
+    case MSG_KEY_EXCHANGE:
+    {
+        printf("[INFO] Generating key pair...\n");
+        gen_key_pair(server_key, client_key);
+
+        memcpy(response->payload, client_key, sizeof(crypto_key_t));
+        payload_len = sizeof(crypto_key_t);
+        printf("[INFO] Key exchange complete.\n");
+        break;
     }
-    
-    uint16_t msg_len = strlen(msg_str);
-    uint16_t total_len = sizeof(uint16_t) + msg_len;
-    
-    // Check if message fits in buffer
-    if (total_len > msg_buff_sz) {
-        return -1;
+
+    case MSG_DATA:
+    {
+        char msg_in[BUFFER_SIZE];
+        memcpy(msg_in, request->payload, request->header.payload_len);
+        msg_in[ntohs(request->header.payload_len)] = '\0';
+
+        char msg_out[BUFFER_SIZE];
+        snprintf(msg_out, sizeof(msg_out), "echo %s", msg_in);
+        payload_len = strlen(msg_out);
+
+        memcpy(response->payload, msg_out, payload_len);
+        break;
     }
-    
-    // Create PDU structure overlay
-    echo_pdu_t *pdu = (echo_pdu_t *)msg_buff;
-    
-    // Set length in network byte order
-    pdu->msg_len = htons(msg_len);
-    
-    // Copy message data
-    memcpy(pdu->msg_data, msg_str, msg_len);
-    
-    return total_len;
+
+    case MSG_ENCRYPTED_DATA:
+    {
+        if (*server_key == NULL_CRYPTO_KEY)
+        {
+            printf("[WARN] No key established, cannot decrypt.\n");
+            payload_len = 0;
+            break;
+        }
+
+        uint8_t decrypted[BUFFER_SIZE];
+        int dec_len = decrypt_string(*server_key, decrypted, request->payload, request->header.payload_len);
+        if (dec_len <= 0)
+        {
+            printf("[ERROR] Decryption failed.\n");
+            payload_len = 0;
+            break;
+        }
+
+        decrypted[dec_len] = '\0';
+        printf("[INFO] Decrypted message: %s\n", decrypted);
+
+        char echo_text[BUFFER_SIZE];
+        snprintf(echo_text, sizeof(echo_text), "echo %s", decrypted);
+
+        uint8_t encrypted[BUFFER_SIZE];
+        int enc_len = encrypt_string(*server_key,
+                                     encrypted,
+                                     (uint8_t *)echo_text,
+                                     strlen(echo_text));
+        if (enc_len <= 0)
+        {
+            printf("[ERROR] Encryption failed.\n");
+            payload_len = 0;
+            break;
+        }
+
+        memcpy(response->payload, encrypted, enc_len);
+        payload_len = enc_len;
+        break;
+    }
+
+    default:
+        printf("[WARN] Unknown message type %d\n", request->header.msg_type);
+        payload_len = 0;
+        break;
+    }
+
+    response->header.payload_len = payload_len;
+    return sizeof(crypto_pdu_t) + payload_len;
 }
 
-void start_server(const char* addr, int port) {
-    printf("Student TODO: Implement start_server()\n");
-    printf("  - Create TCP socket\n");
-    printf("  - Bind to %s:%d\n", addr, port);
-    printf("  - Listen for connections (BACKLOG = %d)\n", BACKLOG);
-    printf("  - Accept and handle clients in a loop\n");
-    printf("  - Close socket on shutdown\n");
-    int sockfd, client_sock;
-    struct sockaddr_in server_addr, client_addr;
-    socklen_t client_addr_len = sizeof(client_addr);
+int service_client_loop(int client_sock)
+{
+    crypto_key_t client_key = NULL_CRYPTO_KEY;
+    crypto_key_t server_key = NULL_CRYPTO_KEY;
+
+    crypto_msg_t *request = malloc(sizeof(crypto_msg_t) + MAX_MSG_DATA_SIZE);
+    crypto_msg_t *response = malloc(sizeof(crypto_msg_t) + MAX_MSG_DATA_SIZE);
+
+    while (1)
+    {
+        memset(response, 0, sizeof(crypto_msg_t) + MAX_MSG_DATA_SIZE);
+        ssize_t hdr_bytes = recv_all(client_sock, (char *)&request->header, sizeof(crypto_pdu_t));
+        if (hdr_bytes <= 0)
+        {
+            printf("[INFO] Client disconnected.\n");
+            break;
+        }
+        uint16_t payload_len = request->header.payload_len;
+        if (payload_len > 0)
+        {
+            ssize_t data_bytes = recv_all(client_sock, (char *)request->payload, payload_len);
+            if (data_bytes <= 0)
+            {
+                printf("[ERROR] Failed to receive payload.\n");
+                break;
+            }
+        }
+
+        print_msg_info(request, server_key, SERVER_MODE);
+
+        if (request->header.msg_type == MSG_CMD_SERVER_STOP)
+        {
+            free(request);
+            free(response);
+            return RC_CLIENT_REQ_SERVER_EXIT;
+        }
+
+        if (request->header.msg_type == MSG_CMD_CLIENT_STOP)
+        {
+            break;
+        }
+
+        // Build and send response
+        int resp_len = build_response(request, response, &client_key, &server_key);
+        if (resp_len > 0)
+        {
+            if (send_all(client_sock, (char *)response, resp_len) != resp_len)
+            {
+                printf("[ERROR] Failed to send response.\n");
+                break;
+            }
+            print_msg_info(response, server_key, SERVER_MODE);
+        }
+    }
+
+    free(request);
+    free(response);
+    return RC_CLIENT_EXITED;
+}
+
+/* -----------------------------------------------------------------------------
+ * Main server loop
+ * ---------------------------------------------------------------------------*/
+int server_loop(int server_socket, const char *addr, int port)
+{
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
     char client_ip[INET_ADDRSTRLEN];
-    char extracted_msg[BUFFER_SIZE];
-    char response_msg[BUFFER_SIZE];
-    ssize_t pdu_len;
+    int client_sock;
+    int rc;
+
+    printf("Server listening on %s:%d...\n", addr, port);
+
+    while (1)
+    {
+        client_sock = accept(server_socket, (struct sockaddr *)&client_addr, &client_len);
+        if (client_sock < 0)
+        {
+            perror("accept");
+            continue;
+        }
+
+        inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
+        printf("Client connected: %s:%d\n", client_ip, ntohs(client_addr.sin_port));
+
+        client_sockfd = client_sock;
+        rc = service_client_loop(client_sock);
+
+        close(client_sock);
+        client_sockfd = -1;
+        printf("Client disconnected.\n");
+
+        if (rc == RC_CLIENT_REQ_SERVER_EXIT)
+            break;
+    }
+
+    return RC_OK;
+}
+
+extern int netmsg_from_cstr(const char *msg_str, uint8_t *msg_buff, uint16_t msg_buff_sz);
+
+void start_server(const char *addr, int port)
+{
+    int sockfd;
+    struct sockaddr_in server_addr;
     int reuse = 1;
-    int server_should_exit = 0;
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0) {
-        perror("Error creating socket");
+    if (sockfd < 0)
+    {
+        perror("socket");
         exit(EXIT_FAILURE);
     }
-    
-    server_sockfd = sockfd; // For signal handler
-    
-    // Set socket options to reuse address
-    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
-        perror("Error setting socket options");
+
+    server_sockfd = sockfd;
+
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0)
+    {
+        perror("setsockopt");
         close(sockfd);
         exit(EXIT_FAILURE);
     }
@@ -381,103 +507,32 @@ void start_server(const char* addr, int port) {
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port);
-    
-    if (strcmp(addr, "0.0.0.0") == 0) {
+
+    if (strcmp(addr, "0.0.0.0") == 0)
         server_addr.sin_addr.s_addr = INADDR_ANY;
-    } else {
-        if (inet_pton(AF_INET, addr, &server_addr.sin_addr) <= 0) {
-            fprintf(stderr, "Error: Invalid address %s\n", addr);
-            close(sockfd);
-            exit(EXIT_FAILURE);
-        }
-    }
-    
-    // Bind socket to address
-    if (bind(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Error binding socket");
-        close(sockfd);
-        exit(EXIT_FAILURE);
-    }
-    
-    // Listen for connections
-    if (listen(sockfd, BACKLOG) < 0) {
-        perror("Error listening on socket");
+    else if (inet_pton(AF_INET, addr, &server_addr.sin_addr) <= 0)
+    {
+        fprintf(stderr, "Invalid address: %s\n", addr);
         close(sockfd);
         exit(EXIT_FAILURE);
     }
 
-    while (!server_should_exit) {
-        printf("Waiting for client connection...\n");
-        
-        // Accept client connection
-        client_sock = accept(sockfd, (struct sockaddr*)&client_addr, &client_addr_len);
-        if (client_sock < 0) {
-            perror("Error accepting connection");
-            continue; // Try to accept next connection
-        }
-        
-        client_sockfd = client_sock; // For signal handler
-        
-        // Get client IP address for logging
-        inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
-        printf("Client connected from %s:%d\n", client_ip, ntohs(client_addr.sin_port));
-        printf("Server ready to process messages from this client...\n");
-        
-        // Client communication loop
-        while (1) {
-            // Receive PDU from client
-            pdu_len = recv_pdu(client_sock, extracted_msg, sizeof(extracted_msg));
-            
-            if (pdu_len < 0) {
-                printf("Error receiving message from client.\n");
-                break; // Close this client, wait for next one
-            } else if (pdu_len == 0) {
-                printf("Client disconnected gracefully.\n");
-                break; // Close this client, wait for next one
-            }
-            
-            printf("Received from client: \"%s\"\n", extracted_msg);
-            
-            // Check for exit server command
-            if (strcmp(extracted_msg, "exit server") == 0) {
-                printf("Client requested server shutdown.\n");
-                
-                // Send shutdown response
-                strcpy(response_msg, "echo: exit server - The server is exiting");
-                if (send_pdu(client_sock, response_msg) < 0) {
-                    perror("Error sending shutdown response");
-                } else {
-                    printf("Sent shutdown message to client: \"%s\"\n", response_msg);
-                }
-                
-                server_should_exit = 1; // Signal to exit main server loop
-                break; // Break out of client loop
-            }
-            
-            // Create echo response: "echo: original_message"
-            snprintf(response_msg, sizeof(response_msg), "echo: %.500s", extracted_msg);
-            
-            // Send response PDU back to client
-            if (send_pdu(client_sock, response_msg) < 0) {
-                printf("Error sending response to client. Client may have disconnected.\n");
-                break; // Close this client, wait for next one
-            }
-            
-            printf("Sent to client: \"%s\"\n", response_msg);
-            printf("---\n");
-        }
-        
-        // Close current client connection
-        close(client_sock);
-        client_sockfd = -1;
-        printf("Client connection closed.\n");
-        
-        if (!server_should_exit) {
-            printf("Ready for next client connection.\n\n");
-        }
+    if (bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
+    {
+        perror("bind");
+        close(sockfd);
+        exit(EXIT_FAILURE);
     }
-    
-    // Clean up server socket
+
+    if (listen(sockfd, BACKLOG) < 0)
+    {
+        perror("listen");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+
+    server_loop(sockfd, addr, port);
+
     close(sockfd);
     server_sockfd = -1;
     printf("Server shutdown complete.\n");

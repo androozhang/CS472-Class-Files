@@ -22,6 +22,8 @@ This assignment requires you to use TCP instead of UDP. Explain in detail **why 
 
 **Hint:** Think about what happens to the encryption keys during a session and what TCP guarantees that UDP doesn't.
 
+TCP is necessary for this assignment because the encryption has to go back and forth and be stored within a connection. A UDP connection wouldn't be able to hold the encryption key because it doesn't have an acknowledgement system like TCP does. Storing the encryption key is important in this assignment because the client and server needs to be aware of their side of the key to be able to properly decrypt the message. If the assignment were to use UDP, there is no promise that the message is sending to the right client. TCP ensures this using a socket connection and between the client and the server. TCP can hold state for the current session being open and use that for decrypting any future message for the client and server.
+
 ---
 
 ## Question 2: Protocol Data Unit (PDU) Structure Design
@@ -34,6 +36,8 @@ Our protocol uses a fixed-structure PDU with a header containing `msg_type`, `di
 - What would be the challenges of parsing messages without a structured header?
 
 **Hint:** Think about different types of data (text, binary, encrypted bytes) and how the receiver knows what it's receiving.
+
+These fields help with ensuring the message is read properly. For example, payload_len ensures the recipient knows the proper length of the message in the case they read too little or too much of the actual message. The message type also helps the server understand how to process the message instead of having to parse the message and figuring out if the client is sending a encrypted message or not. This can lead to confusion between the client and server and cause bugs in the future. The server will have no idea if the message "ENCRYPT:Hello World" is suppose to be a clue that hellow world should be encrypted or is that the actual message being sent. This also allows the developer to create more message types in the future without having to add another prefix which the server will have to implement as well. 
 
 ---
 
@@ -48,6 +52,8 @@ TCP is a **stream-oriented protocol** (not message-oriented), yet our PDU includ
 
 **Hint:** Consider what happens when multiple PDUs are sent in rapid succession, or when a large PDU arrives in multiple `recv()` calls.
 
+The reason we include payload_len is because in the case of a very large message, TCP can break that message into chunks to send to the server. Since TCP sends messages in streams without message boundaries, there is no knowing when the message ends. By including the payload_len in the header, the server can deal with the broken down pieces correctly and merge them together to its original message. Without the header field, TCP would have no way of knowing where to break your message off and have an unreliable way of figuring out if the payload recieved is complete or not. The message size buffer also has to be controlled the application side to define how big the message can be for recv().
+
 ---
 
 ## Question 4: Key Exchange Protocol and Session State
@@ -60,6 +66,8 @@ The key exchange must happen **before** any encrypted messages can be sent, and 
 - How does this relate to the choice of TCP over UDP?
 
 **Hint:** Think about what "session state" means and how it relates to the TCP connection lifecycle.
+
+The key exchange must happen before any encrypted message can be sent for every new connection because this ensures that the key is specific to that connection only. If there were a pre-shared key between the client and the server, this key can be shared amongst others and use to decrypt the message going between client and the server. This also makes it difficult to keep track of what key belongs to what client in the case there are multiple clients. In the case a connection drops, the client must create a new key exchange with the server to ensure keys aren't being reused by other sessions. This design choice makes sense for TCP because TCP holds the connection between the cliebnt and server and can store states during this connection.
 
 ---
 
@@ -74,6 +82,7 @@ Every PDU includes a `direction` field (DIR_REQUEST or DIR_RESPONSE), even thoug
 
 **Hint:** Think about protocol clarity, error detection, and future extensibility beyond simple client-server.
 
+Adding the direction to the PDU helps understand how the data looks during which part of the network transmission. This helps with debugging in the case a message isn't being encrypted or decrypted correctly, and we need to know what stage the message started to become malform. In the case you accidently swapped request/response, you would have to check the direction through the application layer. This makes the protocol more self-documenting because it helps state the role of the message and informs the user or developer what part of the process it is in. This protocol can be extended to peer-to-peer communcation because both the client and server are allowed to recieve and send messages so having the direction field helps with understanding if the message is just a response or if its an actual new message from the other side.
 ---
 
 ## Evaluation Criteria
