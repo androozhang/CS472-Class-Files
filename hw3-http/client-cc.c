@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <time.h>
 
 #define  BUFF_SZ 1024
 
@@ -32,11 +33,27 @@ void print_usage(char *exe_name){
 
 int process_request(const char *host, uint16_t port, char *resource){
     int sock;
-    int total_bytes;
+    int total_bytes = 0;
 
     sock = socket_connect(host, port);
     if(sock < 0) return sock;
+    char *request = generate_cc_request(host, port, resource);
 
+    int request_len = strlen(request);
+    int bytes_sent = send(sock, request, request_len, 0);
+    if (request_len != bytes_sent) {
+        close(sock);
+        return -1;
+    }
+
+    int bytes_recvd;
+    do {
+        bytes_recvd = recv(sock, recv_buff, BUFF_SZ, 0);
+        if (bytes_recvd > 0) {
+            total_bytes += bytes_recvd;
+            printf("%.*s", bytes_recvd, recv_buff);
+        } 
+    } while (bytes_recvd > 0);
     //---------------------------------------------------------------------------------
     //TODO:   Implement Send/Receive loop for Connection:Closed
     //
@@ -55,16 +72,20 @@ int process_request(const char *host, uint16_t port, char *resource){
     // 5. This function should return the total number of bytes received
     //    from the server, so why you are looping around, make sure to
     //    accumulate all of the data received and return this value. 
-    //---------------------------------------------------------------------------------
+    //--------------------------------------------------x-------------------------------
+    
 
     close(sock);
     return total_bytes;
 }
 
 int main(int argc, char *argv[]){
+    clock_t start_time, end_time;
+    double time_taken;
+    start_time = clock();
     int sock;
 
-    const char *host = DEFAULT_HOST;
+    const char *host = DEFAULT_HOST_2;
     uint16_t   port = DEFAULT_PORT;
     char       *resource = DEFAULT_PATH;
     int        remaining_args = 0;
@@ -91,4 +112,7 @@ int main(int argc, char *argv[]){
             process_request(host, port, resource);
         }
     }
+    end_time = clock();
+    time_taken = ((double)(end_time - start_time)) / CLOCKS_PER_SEC;
+    printf("Connection: Close took %f seconds to execute.\n", time_taken);
 }

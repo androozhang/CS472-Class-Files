@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <time.h>
 
 #define  BUFF_SZ            1024
 #define  MAX_REOPEN_TRIES   5
@@ -56,6 +57,12 @@ int reopen_socket(const char *host, uint16_t port) {
     //             -1 to indicate a failure. 
     //----------------------------------------------------------------------------
 
+    for (int i = 0; i < MAX_REOPEN_TRIES; i++) {
+        sock = socket_connect(host, port);
+        if (sock > 0) {
+            return sock;
+        } 
+    }
     
     return -1;
 }
@@ -96,9 +103,10 @@ int submit_request(int sock, const char *host, uint16_t port, char *resource){
         //  2. Assuming you got a valid socket, reissue the send again
         //     sent_bytes = send(sock, req, send_sz,0);
         //----------------------------------------------------------------------------
-        
-        return -1;  //remove this line of code, i just want this to compile so the
-                    //block of code needs at least one line
+        sock = reopen_socket(host, port);
+        if (sock < 0) {
+            return sock;
+        }
     }
 
     //This should not happen, but just checking if we didnt send everything and 
@@ -136,8 +144,11 @@ int submit_request(int sock, const char *host, uint16_t port, char *resource){
     //          a. close the socket -- close(sock)
     //          b. return -1 to exit this function
     //--------------------------------------------------------------------------------
-    int header_len = 0;     //change this to get the header len as per the directions above
-    
+    int header_len = get_http_header_len(recv_buff, bytes_recvd);     //change this to get the header len as per the directions above
+    if (header_len < 0) {
+        close(sock);
+        return -1;
+    }
 
     //--------------------------------------------------------------------------------
     //TODO:  Get the conetent len
@@ -148,7 +159,7 @@ int submit_request(int sock, const char *host, uint16_t port, char *resource){
     // cannot find a Content-Length header, its assumed as per the HTTP spec that ther
     // is no body, AKA, content_len is zero;
     //--------------------------------------------------------------------------------
-    int content_len = 0;    //Change this to get the content length
+    int content_len = get_http_content_len(recv_buff, bytes_recvd);    //Change this to get the content length
 
     //--------------------------------------------------------------------------------
     // TODO:  Make sure you understand the calculations below
@@ -157,7 +168,10 @@ int submit_request(int sock, const char *host, uint16_t port, char *resource){
     // what the following 2 lines of code do to track the amount of data received
     // from the server
     //
-    // YOUR ANSWER:  <START-YOUR-RESPONSE-HERE>
+    // YOUR ANSWER:  For the line that calculates initial_data, it is substracting the total bytes received by the length of the header
+    //               so that we can get the length of the body portion that we received. This is because the first bytes_recv received 
+    //               could have header and body data. For the line that calculates byte_remaining, we substract
+    //               length of the content by initial data so that we can check how much left of the body we still need.
     //
     //--------------------------------------------------------------------------------
     int initial_data =  bytes_recvd - header_len;
@@ -177,13 +191,16 @@ int submit_request(int sock, const char *host, uint16_t port, char *resource){
         //      a. close the socket (sock)
         //      b. return -1 to indicate an error
         //-----------------------------------------------------------------------------
-        bytes_recvd = 0; // replace with a valid recv(...); call
-        
+        bytes_recvd = recv(sock, recv_buff, sizeof(recv_buff), 0); // replace with a valid recv(...); call
+        if (bytes_recvd < 0) {
+            close(sock);
+            return -1;
+        }
         //You can uncomment out the fprintf() calls below to see what is going on
 
-        //fprintf(stdout, "%.*s", bytes_recvd, recv_buff);
+        fprintf(stdout, "%.*s", bytes_recvd, recv_buff);
         total_bytes += bytes_recvd;
-        //fprintf(stdout, "remaining %d, received %d\n", bytes_remaining, bytes_recvd);
+        fprintf(stdout, "remaining %d, received %d\n", bytes_remaining, bytes_recvd);
         bytes_remaining -= bytes_recvd;
     }
 
@@ -206,9 +223,12 @@ int submit_request(int sock, const char *host, uint16_t port, char *resource){
 }
 
 int main(int argc, char *argv[]){
+    clock_t start_time, end_time;
+    double time_taken;
+    start_time = clock();
     int sock;
 
-    const char *host = DEFAULT_HOST;
+    const char *host = DEFAULT_HOST_2;
     uint16_t   port = DEFAULT_PORT;
     char       *resource = DEFAULT_PATH;
     int        remaining_args = 0;
@@ -239,4 +259,7 @@ int main(int argc, char *argv[]){
     }
 
     server_disconnect(sock);
+    end_time = clock();
+    time_taken = ((double)(end_time - start_time)) / CLOCKS_PER_SEC;
+    printf("Connection: Keep-Alive took %f seconds to execute.\n", time_taken);
 }

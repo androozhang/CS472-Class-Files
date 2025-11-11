@@ -1,0 +1,11 @@
+Connection: Close took 0.001163 seconds to execute.
+Connection: Close took 0.001736 seconds to execute.
+Connection: Close took 0.001485 seconds to execute.
+
+Connection: Keep-Alive took 0.001931 seconds to execute.
+Connection: Keep-Alive took 0.001692 seconds to execute.
+Connection: Keep-Alive took 0.001808 seconds to execute.
+
+I think both connect times are similar because even with the keep-alive, we're only making one request, which doesn't show the true
+benefit of having keep-alive. To see an actual improvement with a keep-alive implementation, we would need to send multiple requests to the 
+open tcp connection so that we are not making additional network requests that we would when having a connection: closed approach.
